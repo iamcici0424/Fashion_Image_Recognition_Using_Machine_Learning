@@ -1,0 +1,674 @@
+---
+title: "Applied Data Science:  Midterm Project"
+author: "Xueyan Zou, Chen(Cici) Chen, Mehak Khara"
+date: "3/13/2019"
+output:
+  prettydoc::html_pretty:
+  theme: cayman
+highlight: github
+---
+
+```{r setup, include=FALSE}
+set.seed(72)
+knitr::opts_chunk$set(echo = TRUE, comment="", warning = FALSE, message = FALSE, tidy.opts=list(width.cutoff=55))
+```
+
+```{r libraries, echo = FALSE}
+library(data.table)
+library(DT)
+library(nnet)
+library(glmnet)
+library(class)
+library(randomForest)
+library(gbm)
+library(rpart)
+```
+
+```{r source_files, echo=FALSE}
+train.file <- "../Data/MNIST-fashion training set-49.csv"
+test.file <- "../Data/MNIST-fashion testing set-49.csv"
+```
+
+```{r functions,echo=FALSE}
+# Sampling function 
+generating_samples <- function(size){
+  the.rows <- sample(x = 1:train[, .N], size = size, replace = FALSE)
+  dat <- train[the.rows,]
+  return(dat)
+}
+
+# Error function
+error <- function(label,preds){
+  return(sum(label!=preds)/length(preds))
+}
+
+# Function that runs through the 9 iterations of a single model
+Iteration <- function(FUN){
+  dat = sample.sets
+  size = vector()
+  A = vector()
+  B = vector()
+  C = vector()
+  Points = vector()
+  names = unique(sample.sets.size.label)
+  
+  for(i in names){
+    set = dat[sample.sets.size.label==i]
+    size = c(size, nrow(set))
+    
+    run.model = FUN(set)
+    A = c(A, run.model$score$A)
+    B = c(B, run.model$score$B)
+    C = c(C, run.model$score$C)
+    Points = c(Points, run.model$score$Points)
+  }
+  
+  result = data.table(`Sample Size` = size, Data = names, 
+                      A = A, B = B, C = C, Points = Points)
+  return(result)
+}
+
+# Function to compute the scoreboard results for a model at a given sample size
+scoring <- function(rows, time, error){
+  A <- round(rows/60000,4)
+  B <- round(ifelse(time<60, time/60, 1),4)
+  C <- round(error,4)
+  Points = round(.25*A+.25*B+.5*C,4)
+  
+  return(list(A=A,B=B,C=C,
+              Points=Points))
+}
+```
+
+```{r constants,echo=FALSE}
+n.values <- c(500, 1000, 2000)
+iterations <- 3
+```
+
+```{r load_data,echo=FALSE}
+train <- fread(input = train.file)
+test <- fread(input = test.file)
+```
+
+```{r clean_data,echo=FALSE}
+```
+
+```{r generate_samples,echo=FALSE}
+# Generating 9 model develpment sets
+for(n in n.values){
+  for(k in 1:3){
+    assign(paste("dat_",n,"_",k, sep=""),generating_samples(n))
+  }
+}
+
+# Combining these 9 sets into a whole data set
+sample.sets.raw <- rbind(dat_500_1, dat_500_2, dat_500_3,
+                     dat_1000_1, dat_1000_2, dat_1000_3,
+                     dat_2000_1, dat_2000_2, dat_2000_3)
+sample.sets.size.label <- c(rep("500_1",500), rep("500_2",500), rep("500_3",500),
+                            rep("1000_1",1000), rep("1000_2",1000), rep("1000_3",1000),
+                            rep("2000_1",2000), rep("2000_2",2000),rep("2000_3",2000))
+sample.sets <- cbind(sample.sets.raw, sample.sets.size.label)
+# The first column of sample.sets is the label, and the last column of sample.sets is the dataset that a row belongs to
+```
+
+## Introduction
+
+Our project is mainly about image recognition using data from MNIST Fashion Database. Training data (60,000 rows) and testing data (10,000 rows) are all composed of information about 49 pixels of clothing pictures along with their labels. Our team trained 10 different machine learning models to generate predictive classifications of testing sets. We built these 10 models using 9 sample training sets with sizes 500, 1000 and 2000, and each of the size is randomly sampled from the whole training set for three times.  
+
+Among the 10 models we built, 8 machine learning techniques are applied. Their details are shown as following.  
+
+| Model | Technique | Model | Technique |
+|------|------|------|------|
+|1|Neural Networks|6|K Nearest Neighbours with K=5|
+|2|Multinomial Logistic Regression|7|Random Forest- Ntree = 500|
+|3|Ridge Regression|8|Random Forest - Ntree = 1000|
+|4|LASSO Regression|9|Classification tree|
+|5|K Nearest Neighbours with K=10|10|Ensemble model|
+
+Our purpose is to get as accurate predictive classifications of testing sets as possible, while limiting the size of training rows as well as computing time. We constructed points reflect these three features of our models, and the goal is to obtain lower points - lower error, less time and smaller size.  
+
+In our report, we've hidden the code parts of functions for generating 9 training sample sets, scoring, iterating, and computing error. All detailed codes are displayed in the R markdown file along with comments for code lines of how they work. The displayed codes are only for constructing models.  
+
+### Model 1:  Neural Networks
+
+Neural network has a very complicated model structure. It digests data's features in a way like the brain of human beings. By fitting a neural network model to the data, it can grasp every possible feature that may influence the data labels and predict accurately.  
+
+A neural network consists of weight matrix, activation function, and neurons which make up hidden layers. The input is data matrix multiplied by a weight matrix, and the weighted data goes into neurons. Filtered by an activation function, which decides whether weighted data can pass or not, the new data repeats the former steps again and again (depending on the layer number of the network) with different weight matrix and finally to the output. Loss function is computed by comparing the output with the true label, and taking derivation of loss function can obtain the optimization direction of the weights.  
+
+The "size" parameter is the number of units in the hidden layer. On one hand, the complexity of the neural network's structure increases as number of units increases, and so does the computing time. On the other hand, increasing of units will enhance the prediction accuracy. It's important to find a trade-off between test error and computing time. I chose $size=10$ to decrease the computation time while ensure the accuracy of classification results. For the parameter "decay",it defines the decaying step of optimization procedure. The smaller decaying step, the less likely weights miss their optimized values, so I set $decay=5\times10^{-4}$. $Maxit$ parameter is the total number of rounds of the optimization procedure, and accuracy increases as rounds increase, but so does computing time. I set the it to be $10^5$.  
+
+**Model building code**
+
+```{r code_model1_development, eval = TRUE}
+model1 <- function(dat){
+
+  dat.label = class.ind(dat[,label])
+  train = dat[,2:50] #note only the 2nd to 50th columns of data are trainable datapoints
+  toc <- Sys.time() #time 1
+  #fitting model
+  model <- nnet(train, dat.label, size = 10, rang = 1/max(train),
+                decay = 5e-4, maxit = 10^5, trace = FALSE)
+  #predicting
+  class.name <- function(vector){
+    names(which.max(vector)) #turn the class matrix into class names
+  } 
+  train.preds <- apply(predict(model, train), 1, class.name)
+  test.preds <- apply(predict(model, test[,-1]), 1, class.name)
+  
+  tic <- Sys.time() #time 2
+  the.time <- as.numeric(x = tic-toc, units = "secs")
+  
+  #test error
+  test.error <- error(test[,label], test.preds)
+  
+  #caculating score
+  return(list(score = scoring(rows = nrow(dat), time = the.time, error = test.error),
+              train.preds = train.preds, test.preds=test.preds))
+}
+```
+
+```{r load_model1,echo=FALSE}
+model1.result <- Iteration(FUN = model1)
+#datatable(model1.result)
+```
+
+Neural network models'complex model structure ensures their ability to dive into small details of data. However, it highly increases the risk of overfitting as well as time consuming. Thus, it's a model that is more suitable for very complicated datasets-say,natural language datasets. In our midterm project, the data is kind of too simple and complexity of model is not a must. Thus, the results are not as satisfied. The computing time is relatively long and the test errors are relatively high(larger than 0.3).
+
+
+### Model 2:  Multinomial Logistic Regression
+
+Multinomial logistic Regression is a generalized version of linear regression - it maps the classification problem into multiclass space, which is suitable for our image recognition problem, as we have 10 types of images. It's based on linear models $\boldsymbol{\beta}^T\boldsymbol{x}$. For each class k, we can obtain a coefficient vector $\boldsymbol{\beta}^T_k$, such that 
+$$P(y=k|\boldsymbol{x})=\frac{e^{\boldsymbol{\beta_i^T}x}}{1+\sum_{i=1}^{k-1}e^{\boldsymbol{\beta_i^Tx}}}$$ and the k with highest probability is the predicted class.  
+
+There are no specific parameters to select by running "multinom"" function. Just regress the label on each pixel and it automatically gives the optimized coefficients as well as classifications.  
+
+**Model building code**
+
+```{r code_model2_development,eval = TRUE}
+model2 <- function(dat){
+
+  train = dat[,1:50]
+  toc <- Sys.time() #time 1
+  #fitting model
+  model <- multinom(label~., data=train, trace = FALSE)
+  #predicting
+  train.preds <- as.vector(predict(model, train[,-1]))
+  test.preds <- as.vector(predict(model, test[,-1]))
+  
+  tic <- Sys.time() #time 2
+  the.time <- as.numeric(x = tic-toc, units = "secs")
+  
+  #test error
+  test.error <- error(test[,label], test.preds)
+  
+  #caculating score
+  return(list(score = scoring(rows = nrow(dat), time = the.time, error = test.error),
+              train.preds = train.preds, test.preds = test.preds))
+}
+```
+
+```{r load_model2,echo=FALSE}
+model2.result <- Iteration(FUN = model2)
+#datatable(model2.result)
+```
+
+It's basically a probability model so that it's easy to explain and apply. However, the model is sensitive to predictor variables that are highly correlated. In image recognition problem, we cannot guarantee the independence between each predictor(pixels), so the classifying is not as satisfied. The test error is relatively high(around 0.3).  
+
+### Model 3 Ridge Regression
+
+Basic linear regression uses least square estimation to obtain regression coefficients. However, when predictors in original dataset are highly multicollinearity related, the least square method will lose its advantage and produces extremely large coefficients, so that sensitive to noises. Ridge regression fixes this problem. (So does LASSO regression)  
+
+Ridge regression adds a penalization term to the least square. It is $\lambda||w||^2_2$, and by minimizing the sum MSE and $\lambda||w||^2_2$, we guarantee that $w$ coefficients wouldn’t become too large. Using $glmnet$ function in R and set the argument $alpha$ to be 0, we get ridge regression models.  
+
+Ridge regression effectively decreases the uncertainty of model by controlling the value of beta. However, it only reduces the value of beta rather than eliminating these coefficients, which makes the amount of predictor variables too large for a model.  
+
+**Model building code**
+
+```{r code_model3_development,eval = TRUE}
+model3 <- function(dat){
+  
+  dat.label = dat[,label]
+  train = as.matrix(dat[,2:50])
+  toc <- Sys.time() #starting time
+  
+  #fitting model
+  model <- glmnet(train, dat.label, family = "multinomial", alpha = 0)
+  
+  #predicting
+  prob.train <- predict(model, train, 
+                     type = "response", s = 0.01)[,,1]
+  prob.test <- predict(model, as.matrix(test[,2:50]), 
+                     type = "response", s = 0.01)[,,1]
+  tic <- Sys.time() #ending time
+  the.time <- as.numeric(x = tic-toc, units = "secs")
+  
+  #error
+  train.preds <- colnames(prob.train)[apply(prob.train, 1, which.max)]
+  test.preds <- colnames(prob.test)[apply(prob.test, 1, which.max)]
+  test.error.mllr<- error(test[,1], preds = test.preds)
+  
+  return(list(score = scoring(rows = nrow(dat), time = the.time, error = test.error.mllr),
+         train.preds = train.preds, test.preds = test.preds))
+        
+}
+```
+
+```{r load_model3,echo=FALSE}
+model3.result <- Iteration(model3)
+#datatable(model3.result)
+```
+
+
+### Model 4 LASSO Regression
+
+LASSO stands for Least Absolute shrinkage and selection operator and it is a relatively recent alternative to RIDGE regression. It minimizes the quantity that the penity term becomes $\lambda \sum|\beta_j|$ here. We picked up LASSO as Ridge Regression has one obvious disadvantage that it concludes all the predictors in our final model, and the penalty term $\lambda \sum\beta_j^2$ will shrink all of the coefficients towards zero, not equal to zero. In this way, it will be difficult to interprate the settings in terms of the number of variables, and this is the reason why we choose LASSO to solve this problem.  
+
+LASSO regression is one type of linear regression that we can use the Shrinkage as a tool. In the other words, LASSO prefer to choose simple models with fewer parameters compared to RIDGE regression.  
+
+Using `glmnet` function in R and set the argument $alpha$ to be 1, actually the default for the glmnet function is $\alpha$=1, and then we can get the LASSO regression model being fit to our data.  
+
+LASSO provides a good prediction accuracy as it removes the coefficients and decreases variance without a substantial increase of the bias. It is useful when we do not have enough observations and we need to predict a lot of features. It has good model interpretability by eliminating irrelated variables and it reduces the chance of overfitting. However, LASSO's penalty is too large when the error is small (close to 0).  
+
+**Model building code**
+
+```{r code_model4_development,eval = TRUE}
+model4 <- function(dat){
+  
+  dat.label = dat[,label]
+  train = as.matrix(dat[,2:50])
+  toc <- Sys.time() #starting time
+  
+  #fitting model
+  lasso.lr<- glmnet(train, dat.label, family = "multinomial")
+  
+  #predicting
+  prob.train <- predict(lasso.lr, train,
+                        type = "response", s = 0.01)[,,1]
+  prob.test <- predict(lasso.lr, as.matrix(test[,2:50]), 
+                     type = "response", s = 0.01)[,,1]
+  tic <- Sys.time() #ending time
+  the.time <- as.numeric(x = tic-toc, units = "secs")
+  
+  #error
+  train.preds <- colnames(prob.train)[apply(prob.train, 1, which.max)]
+  test.preds <- colnames(prob.test)[apply(prob.test, 1, which.max)]
+  test.error.mllr<- error(test[,1], preds = test.preds)
+  
+  return(list(score = scoring(rows = nrow(dat), time = the.time, error = test.error.mllr),
+              train.preds = train.preds, test.preds = test.preds))
+  
+}
+```
+
+```{r load_model4,echo=FALSE}
+model4.result <- Iteration(FUN = model4)
+#datatable(model4.result)
+```
+
+LASSO is generated successfully, and we can see that it shows a good prediction accuracy in terms of Point function.
+
+### Model 5 K Nearest Neighbours with K=10
+
+The k-nearest neighbors algorithm (KNN) is a non-parametric method which can be used for both classification and regression. We chose it as our model because it is commonly used for its ease of interpretation and low calculation time. We predict the data points based on the average of the outcomes of the K nearest neighbors.  
+
+KNN based on distance metric such as Euclidean distance to determine what constitutes the K nearest neighbors. 
+If k is big enough, we will be able to cover the whole training set, and it becomes naive Bayesian model, so it will influence the accuracy. If k is too small, the decision boundary will become unstable. One small change in the training set may cause the big change in our classification results.
+
+The advantage of the model is that it is easy to understand and has a developed system when applied to classification and regression. Besides, it is not sensitive to outliers. However, the calculation process is difficult and the accuracy could not be ensured, and it cannot interpret the meanings of the data.
+
+When considering the choice of K value, we can use cross-validation, which could give us the result of a good choice of k. The following code shows how we get the optimal k procedure.
+
+```{r, eval=FALSE}
+cross.validation<-function(dat){
+ctrl <- trainControl(method="repeatedcv",repeats = 3)
+knnFit <- train(label ~ ., data = dat, method = "knn", trControl = ctrl, preProcess = c("center","scale"),tuneLength = 20)
+return(knnFit)
+}
+```
+
+We are choosing K=10 here to have a rough idea about KNN process.
+
+**Model building code**
+
+```{r code_model5_development,eval = TRUE}
+model5 <- function(dat){
+  
+  dat.label = as.matrix(dat[,1])
+  train = dat[,2:50]
+  
+  toc <- Sys.time() #starting time
+  
+  #fitting model and predicting
+  train.preds <- knn(train, train, 
+                     cl=as.factor(as.matrix(dat[,1])), k=10)
+  test.preds <- knn(train, test[,2:50], 
+                    cl=as.factor(as.matrix(dat[,1])), k=10)
+  
+  tic <- Sys.time() #ending time
+  the.time <- as.numeric(x = tic-toc, units = "secs")
+  
+  #error
+  test.error.knn<- error(test[,1], preds = as.matrix(test.preds))
+  
+  return(list(score=scoring(rows = nrow(dat), time = the.time, error = test.error.knn),
+              train.preds=as.vector(train.preds), 
+              test.preds=as.vector(test.preds)))
+  
+}
+```
+
+```{r load_model5,echo=FALSE}
+model5.result <- Iteration(FUN = model5)
+# datatable(model5.result)
+```
+
+It is easy to see that the running time of KNN model is shorter compared to the others. Points are around 0.12 t0 0.15.
+
+### Model 6 K Nearest Neighbours with K=5
+
+Now we change the parameter K from K=10 to K=5. As a matter of fact, after trying several values of our parameter K, we found that K=5 is the optimal choice in terms of Point function.
+
+**Model building code**
+
+```{r code_model6_development,eval = TRUE}
+model6<- function(dat){
+  
+  dat.label = as.matrix(dat[,1])
+  train = dat[,2:50]
+  toc <- Sys.time() #starting time
+  
+  #fitting model and predicting
+  train.preds <- knn(train, train,
+                     cl=as.factor(as.matrix(dat[,1])), k=5)
+  test.preds <- knn(train, test[,2:50], 
+                    cl=as.factor(as.matrix(dat[,1])), k=5)
+  
+  tic <- Sys.time() #ending time
+  the.time <- as.numeric(x = tic-toc, units = "secs")
+  
+  #error
+  test.error.knn<- error(test[,1], preds = as.vector(test.preds))
+  
+  return(list(score = scoring(rows = nrow(dat), time = the.time, error = test.error.knn),
+              train.preds = as.vector(train.preds),
+              test.preds = as.vector(test.preds)))
+  
+}
+```
+
+```{r load_model6,echo=FALSE}
+model6.result <- Iteration(model6)
+# datatable(model6.result)
+```
+
+### Model 7 Random Forest- Ntree = 500 and mtry = 7
+
+Random Forest usually provides higher accuracy than most other models. In random forest, a number of decision trees are built from bootstrapped training samples i.e. random samples that are selected from the training set with replacement. While building the decision trees, each time a split in tree is considered, a random set of m predictors is selected from a full set of p predictors. The split is allowed to use only one of those m predictors. The number of predictors considered at each split is usually equal to the square root of the total number of predictors.  
+
+For the parameters, we decided to go with 500 trees since it reduces the computational burden in comparison to selecting a larger number of trees but at the same time it also decreases the variance . For the `Mtry` parameter, since we have 49 variables and 7 is the square root of 49, 7 is the default number of variables randomly sampled.  
+Random forest de-correlates the trees. This reduces variance and improves the accuracy of the model. It can be used for classification and regression models. However, this brings greater computational complexity.  
+
+**Model building code**
+
+```{r code_model7_development,eval = TRUE}
+model7 <- function(dat){
+  dat$label <- as.factor(dat$label)
+  train = dat[,1:50]
+  
+  #time
+  toc <- Sys.time() #time begin
+  
+  model <- randomForest(label~., data = train, ntree = 500, mtry = 7)
+  
+  train.preds <- as.vector(predict(model, newdata = train))
+  test.preds <- as.vector(predict(model, newdata = test))
+  
+  tic <- Sys.time() #time finish
+  the.time <- as.numeric(x = tic-toc, units = "secs")
+  
+  error <- error(test[,label], test.preds)
+  return(list(score = scoring(rows = nrow(dat), time = the.time, error = error),
+              train.preds = train.preds, test.preds = test.preds))
+}
+```
+
+```{r load_model7,echo=FALSE}
+model7.result <- Iteration(FUN = model7)
+#datatable(model7.result)
+```
+
+### Model 8 Random Forest - Ntree = 1000
+
+I increased the number of trees to 1000 so see how it would affect the model and I noticed that while the accuracy was similar for both the models, the model with 1000 trees took more time to run. After analysing the points of both the models and comparing the accuracy and computing time, I believe that model 7 is a better model that model 8. 
+
+```{r code_model8_development,eval = TRUE}
+model8 <- function(dat){
+
+  train = dat[,1:50]
+  
+  #time
+  toc <- Sys.time() #time begin
+  
+  model <- randomForest(as.factor(label)~., data = train, ntree = 1000, mtry = 7)
+  
+  train.preds <- as.vector(predict(model, newdata = train))
+  test.preds <- as.vector(predict(model, newdata = test))
+  
+  tic <- Sys.time() #time finish
+  the.time <- as.numeric(x = tic-toc, units = "secs")
+  
+  error <- error(test$label, test.preds)
+  return(list(score = scoring(rows = nrow(dat), time = the.time, error = error),
+              train.preds = train.preds, test.preds = test.preds))
+}
+```
+
+```{r load_model8,echo=FALSE}
+model8.result <- Iteration(FUN = model8)
+#datatable(model8.result)
+```
+
+### Model 9 Classification tree
+
+Classification tree is a method that is easy to interpret and it can be used to predict categorical outcomes. At the top of the tree the best variable is selected, then the variable is split into two or more branches. The branching continues until the best stopping criteria has reached.  
+
+When building model, we selected `Method= “class”` since classification trees can be used to predict qualitative outcomes.  
+
+A classification tree is easy to interpret and understand the data. Besides, this model can easily be explained to others since categorical splits are easy to understand. However, a tree can become complex if it is too large, and their level of accuracy is not as good as the other models.  
+
+**Model building code**
+
+```{r code_model9_development,eval = TRUE}
+model9 <- function(dat){
+  train = dat[,1:50]
+ 
+   #time
+  toc <- Sys.time() #time begin
+  
+  model <- rpart(as.factor(label)~.,method="class", data=train)
+  
+  train.preds <- as.vector(predict(model, newdata = train, type = "class"))
+  test.preds <- as.vector(predict(model, newdata = test, type = "class"))
+  
+  tic <- Sys.time() #time finish
+  the.time <- as.numeric(x = tic-toc, units = "secs")
+  
+  error <- error(test$label, test.preds)
+  return(list(score = scoring(rows = nrow(dat), time = the.time, error = error),
+              train.preds = train.preds, test.preds = test.preds))
+}
+```
+
+```{r load_model9,echo=FALSE}
+model9.result <- Iteration(model9)
+#datatable(model9.result)
+```
+
+### Model 10 Ensemble Model
+
+We decided to use build an ensemble model to improve the accuracy of our prediction. Constructing such a model helps with understanding how the predictions of our other models could be combined together to improve the accuracy.  
+
+Utilizing predictions of training sets from the other models as predictor and the true labels of training sets as response vector, we trained a random forest model to obtain reasonable weights for each foundation model. Having obtained the optimized coefficients of this ensemble model, we use the classification results of test sets from the 8 foundation models as input to obtain the outcome of the test set.  
+
+We selected to use the predictions of model 2 - 8 to build an ensemble model to predict the outcome. We decided to exclude model 1 (neural network model) since its running time is very high.  
+
+The advantage of this model is obvious - it helps in improving machine learning models by using the predictions of other models such that better predictions in comparison to single models. However, this requires greater computational complexity, and it's hard to decide which based models should be used exactly to construct this essemble model.  
+
+**Model building code**
+
+```{r code_model10_development,eval = TRUE}
+model10 <- function(dat){
+
+  toc <- Sys.time() #time begin
+  
+  # Constructing model
+  
+  results <- list()
+  # Creating a list to store each model's results
+  results[[1]] <- model2(dat)
+  results[[2]] <- model3(dat)
+  results[[3]] <- model4(dat)
+  results[[4]] <- model5(dat)
+  results[[5]] <- model6(dat)
+  results[[6]] <- model7(dat)
+  results[[7]] <- model8(dat)
+  results[[8]] <- model9(dat)
+  
+  # In this model, we use model 2 to model 9 to construct the essemble model
+  
+  # Creating a matrix whose columns are predictions of training sets computed by each model
+  # with the first column as the true label of training set
+  train.preds.matrix <- matrix(nrow = nrow(dat), ncol = 9)
+  colnames(train.preds.matrix) <- c("label", paste("m",2:9, sep = ""))
+  train.preds.matrix[,1] <- dat[,label]
+  for(i in 2:9){
+    train.preds.matrix[,i] <- results[[i-1]]$train.preds
+  }
+  
+  train.preds.matrix <- apply(train.preds.matrix, 2, as.factor)
+
+  # Fit a randomforest model to classes of training set classified by each model 
+  #against true training labels 
+  model <- randomForest(label~., train.preds.matrix)
+  
+  # Creating a matrix whose columns are predictions of test sets computed by each model
+  test.preds.matrix <- matrix(nrow = nrow(test), ncol = 8)
+  colnames(test.preds.matrix) <- paste("m",2:9, sep = "")
+
+  for(i in 1:8){
+    test.preds.matrix[,i] <- results[[i]]$test.preds
+  }
+  
+  test.preds.matrix <- apply(test.preds.matrix, 2, as.factor)
+  
+  # Make predictions by inputing the predictions of test set produced by each model
+  test.preds <- as.vector(predict(model, newdata = test.preds.matrix))
+  
+  tic <- Sys.time() #time finish
+  the.time <- as.numeric(x = tic-toc, units = "secs")
+  
+  # Computing error
+  error = error(test[,label], test.preds)
+  
+  return(list(score = scoring(rows = nrow(dat), time = the.time, error = error),
+              test.preds = test.preds))
+}
+```
+
+```{r load_model10,echo=FALSE}
+model10.result <- Iteration(model10)
+#datatable(model10.result)
+```
+
+### Scoreboard
+
+The total scoreboard of our model is shown as following (codes of editing scoreboard are hidden). For each sample size of each model, we take the average of the points and display the table in an increasing order of points. A is the proportion of training rows used, B is the computing time, and C is the test error. 
+
+$$Points = 0.25A+0.25B+0.5C$$
+
+```{r scoreboard,eval = TRUE, echo=FALSE}
+avg.score <- function(result = results){
+  A = vector()
+  B = vector()
+  C = vector()
+  Points = vector()
+  for(i in 0:2){
+    index = (i*3+1):(i*3+3) #index of the rows to be averaged:1-3,4-6,7-9
+    A = c(A, mean(result[index,A]))
+    B = c(B, mean(result[index,B]))
+    C = c(C, mean(result[index,C]))
+    Points = c(Points, mean(result[index,Points]))
+  }
+  return(data.table(`Sample Size` = n.values,
+                    A = round(A,4), B = round(B,4), C = round(C,4), 
+                    Points = round(Points,4)))
+}
+
+scoreboard <- rbind(avg.score(model1.result), avg.score(model2.result), 
+                    avg.score(model3.result), avg.score(model4.result),
+                    avg.score(model5.result), avg.score(model6.result),
+                    avg.score(model7.result), avg.score(model8.result),
+                    avg.score(model9.result), avg.score(model10.result))
+scoreboard <- cbind(Model=c(rep(1,3),rep(2,3),rep(3,3),rep(4,3),rep(5,3),
+                       rep(6,3),rep(7,3),rep(8,3),rep(9,3),rep(10,3)), scoreboard)
+setorderv(scoreboard, cols = "Points", order = 1)
+datatable(scoreboard)
+```
+
+## Discussion
+
+#### 1. Model Results and Findings
+
+According to our results, model 7 which is built using the random forest algorithm with 500 trees is our best model with a score of 0.1198 and sample size of 2000, but the proportion of errors is the lower in model 8 which is  built using the random forest algorithm with 1000 trees and sample size of 2000. This suggests that increasing the complexity of the model to an optimal level provides higher accuracy. 
+
+The model that had the lowest proportion of errors in the test sample, was the ensemble model with 2000 samples but it also had the second to highest running speed due to which the value of the total points for this model was high. 
+
+#### 2. How did the choice of the Points function impact the results? 
+
+The models are evaluated based on the sample size, running time and proportion of errors on the test samples. Keeping this is mind our team built models that provided high accuracy in a short running time. Our best model represented fast running time and high accuracy. Some of our models had a lower proportion of errors on the testing set but the overall value of the points was higher due to the complexity and running time of the model. Therefore we can notice that if the choice was points was different then our final result would be different, for example- if we did not take the running time into consideration then our result for the best model would be different. 
+
+#### 3. What would happen if we gave more weight to the sample size component A or the running time factor B instead of more weight to the accuracy C? 
+
+Currently, more weightage is assigned to the accuracy thereby the value of points gives more weightage to the accuracy of the model in comparison to the other two components under consideration i.e A and B. If we gave more weight to the running time then we would have had to decrease the complexity of our models to reduce the running time which could lead to a possible drop in the accuracy of the predictions.  
+
+#### 4. What would we do if we had the computing resources to explore a wider variety of models and sample sizes?
+
+If we had more computing resources we would have changed the parameters of some of the models to increase the complexity to an optimal point to improve our predictions. For example: As we can see in our results that the ensemble model has the lowest proportion of prediction errors but due to the running time the value of the points increases. Besides, if we have a wider variety of sample sizes, we may increase the size of training set to a much larger scale in neural network models, because neural networks usually perform better on massive training data.
+
+#### 5. Lessons from this project
+
+We have learned a lot from this project in terms of the different machine learning algorithms, data features that may influence the results, and the importance of the teamwork. 
+
+1) Sometimes sample size doesn't influence the model's accuracy that much, as we can see from our results that a training set of 500 rows sometimes perform better than the 1000 and 2000 rows in a single model, while at other times opposite situations occur. A possible explanation is that the amount of predictor variables in this project is relatively small - only 49 pixels, so small sample size can perform well.  
+
+2) When we apply different models to the same training set, the prediction results are so different than we expected. For example, if we use the sample algorithm, we will save time in the prediction process, while we need to bear the penalty that the accuracy may be decreased. The trade-off between the bias and variance indicates the essence of building our models and evaluating our models. The best model may not be found, while the several models could be used towards one dataset to make better predictions from different emphasis points.  
+
+3) Additionally, the importance of teamwork leads to a better performance. Our team-members work together to solve tough problems, and we communicate our ideas to each other efficiently and effectively, so we have learned a lot of coding experience from each other.  
+
+4) Organizing the code structure - including variable names, functions, and outputs - in a neat style will enormously contribute to easier group works. If a team member in the project define a unified style of constructing models, loading models and calculating scores, say, using pre-written functions, then there is less chance that other group members get confused about the code lines not written by themselves. Under this case, the communication between group members become more smoothly and collaborating is much easier.  
+
+5) Working on this project exposed up the a variety of different models and machine learning techniques. By building models we were able to get an understanding of the application and the concepts of the different machine learning algorithms. 
+
+6) We were able to understand how to build a ensemble model and its functionality. 
+
+7) Since we all came from different academic backgrouds, we were able to pick up some good coding practises from each other and work well together. Each one of us had different areas of knowledge that could be applied towards this project- for example: One of the team members was good at creating functions while the others had worked on machine learning projects, the collaboration of the knowledge and skills helped us build a successful project. 
+
+All in all, through this project we were exposed to a wide range of machine learning techniques and build on our technical skills. Most importantly, we were able to learn the importance of team work and collaboration to create a successful project. 
+
+## References
+
+* Goswami, A., & Goswami, A. (2018, February 08). Intro to image classification with KNN. Retrieved from https://medium.com/@YearsOfNoLight/intro-to-image-classification-with-knn-987bc112f0c2
+
+* En.wikipedia.org. (2019). Multinomial logistic regression. [online] Available at:https://en.wikipedia.org/wiki/Multinomial_logistic_regression [Accessed 13 Mar. 2019].
+
+* Chakon, O. (2019). Practical machine learning: Ridge regression vs. Lasso - Coding Startups. [online] Coding Startups. Available at: https://codingstartups.com/practical-machine-learning-ridge-regression-vs-lasso/ [Accessed 13 Mar. 2019].
+
+* Donges, N., & Donges, N. (2018, February 22). The Random Forest Algorithm. Retrieved from https://towardsdatascience.com/the-random-forest-algorithm-d457d499ffcd
+
+* \10105510377845702. (2017, August 22). Ensemble Learning to Improve Machine Learning Results. Retrieved from https://blog.statsbot.co/ensemble-learning-d1dcd548e936
+
+* Imran. (2015, November 15). How to choose the value of K in knn algorithm. Retrieved from https://discuss.analyticsvidhya.com/t/how-to-choose-the-value-of-k-in-knn-algorithm/2606/3
+
+* Reffered to the lecture notes of APANPS5200_006_2018_3
+

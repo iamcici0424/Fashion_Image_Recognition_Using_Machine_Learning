@@ -25,8 +25,8 @@ library(rpart)
 ```
 
 ```{r source_files, echo=FALSE}
-train.file <- "../Data/MNIST-fashion training set-49.csv"
-test.file <- "../Data/MNIST-fashion testing set-49.csv"
+train.file <- "../data/MNIST-fashion-training-set-49.csv"
+test.file <- "../data/MNIST-fashion-testing-set-49.csv"
 ```
 
 ```{r functions,echo=FALSE}

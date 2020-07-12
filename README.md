@@ -8,8 +8,9 @@
 + Mehak Khara
 + Xueyan Zou
 
-**Goal**: The project will focus on an image recognition problem, and we will construct a variety of machine learning models with the goal of generating predictive classifications. Our purpose is to get as accurate predictive classifications of testing sets as possible, while limiting the size of training rows as well as computing time. We constructed points reflect these three features of our models, and the goal is to obtain lower points - lower error, less time and smaller size.
+**Goal**: 
 
+The project will focus on an image recognition problem, and we will construct a variety of machine learning models with the goal of generating predictive classifications. Our purpose is to get as accurate predictive classifications of testing sets as possible, while limiting the size of training rows as well as computing time. We constructed points reflect these three features of our models, and the goal is to obtain lower points - lower error, less time and smaller size.
 
 
 ### Introduction:

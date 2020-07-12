@@ -26,5 +26,9 @@ Our team trained 10 different machine learning models to generate predictive cla
 * Training Set: [MNIST-fashion-training-set-49.csv](data/MNIST-fashion-testing-set-49.csv). This file contains 60,000 rows of data.
 * Testing Set: [MNIST-fashion-testing-set-49.csv](data/MNIST-fashion-training-set-49.csv). This file contains 10,000 rows of data.
 
+## Code
+* [R code](code/Midterm-Project-Group-19.rmd)
+
 ## Reports
+* [HTML Report](doc/Midterm-Project-Group-19.html)
 

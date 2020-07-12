@@ -14,7 +14,7 @@ The project will focus on an image recognition problem, and we will construct a 
 
 
 ### Introduction:
-Our project is mainly about image recognition using data from [MNIST Fashion Database](https://github.com/zalandoresearch/fashion-mnist)). 
+Our project is mainly about image recognition using data from [MNIST Fashion Database](https://github.com/zalandoresearch/fashion-mnist). 
 
 The dataset collected a large number of images for different types of apparel. Each image is divided into small squares called pixels of equal area. Within each pixel, a brightness measurement was recorded in grayscale. The brightness values range from 0 (white) to 255 (black). Training data (*60,000 rows*) and testing data (*10,000 rows*) are all composed of information about 49 pixels of clothing pictures along with their labels. 
 

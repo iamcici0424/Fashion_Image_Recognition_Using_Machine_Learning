@@ -19,3 +19,10 @@ Our project is mainly about image recognition using data from [MNIST Fashion Dat
 The dataset collected a large number of images for different types of apparel. Each image is divided into small squares called pixels of equal area. Within each pixel, a brightness measurement was recorded in grayscale. The brightness values range from 0 (white) to 255 (black). Training data (*60,000 rows*) and testing data (*10,000 rows*) are all composed of information about 7x7 pixels of clothing pictures along with their labels. 
 
 Our team trained 10 different machine learning models to generate predictive classifications of testing sets. We built these 10 models using 9 sample training sets with sizes 500, 1000 and 2000, and each of the size is randomly sampled from the whole training set for three times.
+
+## Data
+
+* Training Set: [MNIST-fashion training set-49.csv](MNIST-fashion testing set-49.csv). This file contains 60,000 rows of data.
+* Testing Set: [MNIST-fashion testing set-49.csv](MNIST-fashion training set-49.csv). This file contains 10,000 rows of data.
+## Reports
+

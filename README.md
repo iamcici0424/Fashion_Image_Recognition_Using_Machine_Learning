@@ -4,9 +4,9 @@
 
 **Group members**:
 
-+ Chen(Cici) Chen cc4291@columbia.edu
-+ Mehak Khara
-+ Xueyan Zou
++ Cici Chen cc4291@columbia.edu
++ Mehak Khara mk4196@columbia.edu
++ Xueyan Zou xueyan.z@columbia.edu
 
 **Goal**: 
 
